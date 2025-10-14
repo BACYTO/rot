@@ -529,7 +529,7 @@
         saveButton.addEventListener('click', () => {
             if (!userPublicKey || !playerModel) return;
             gameState.position = { x: playerModel.position.x / TILE_SIZE, z: playerModel.position.z / TILE_SIZE };
-            savePlayerData(userPublicKey.toBase5á(userPublicKey.toBase58(), gameState);
+            savePlayerData(userPublicKey.toBase58(), gameState);
         });
     </script>
 </body>
