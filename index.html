@@ -27,10 +27,13 @@
         .btn-phantom:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(117, 73, 255, 0.5); }
         #game-canvas-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
         canvas { display: block; }
-        .cooldown-bar { background-color: rgba(255, 255, 255, 0.2); width: 100px; height: 10px; border-radius: 5px; overflow: hidden; }
-        .cooldown-fill { background-color: #4ade80; height: 100%; transition: width 0.1s linear; }
+        .bar { background-color: rgba(0, 0, 0, 0.4); width: 200px; height: 20px; border-radius: 10px; overflow: hidden; border: 2px solid rgba(255,255,255,0.3); }
+        .bar-fill { height: 100%; transition: width 0.2s ease-out; }
+        #hp-bar-fill { background: linear-gradient(90deg, #ef4444, #f87171); }
+        #xp-bar-fill { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
         .power-card { transition: all 0.2s ease-in-out; border: 2px solid rgba(255,255,255,0.2); }
         .power-card:hover { transform: scale(1.05); border-color: #a45cff; }
+        .power-cooldown { position: absolute; bottom: 0; left: 0; height: 4px; background-color: #60a5fa; transition: width 0.1s linear; }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
@@ -38,7 +41,7 @@
     <!-- Pantalla de Selección de Poderes -->
     <div id="powerup-screen" class="hidden absolute inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center">
         <div class="text-center">
-            <h2 class="text-4xl font-bold mb-8">Elige una Mejora</h2>
+            <h2 class="text-4xl font-bold mb-8">¡Nivel Alcanzado! Elige una Mejora</h2>
             <div id="powerup-choices" class="flex gap-8">
                 <!-- Las opciones de poderes se insertarán aquí -->
             </div>
@@ -79,16 +82,19 @@
                     <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Desconectar</button>
                 </div>
             </div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 card p-4 rounded-xl text-center flex items-center space-x-6">
-                 <p class="font-bold text-2xl" id="player-hp">HP: 10/10</p>
-                 <p class="font-bold text-2xl text-yellow-400" id="player-tokens">TOKENS: 0</p>
-                 <div class="flex flex-col items-center">
-                    <p class="text-sm text-gray-400">ATAQUE (ESPACIO)</p>
-                    <div class="cooldown-bar mt-1">
-                        <div id="attack-cooldown-fill" class="cooldown-fill w-full"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 card p-4 rounded-xl flex flex-col items-center space-y-2">
+                <div id="player-stats" class="flex items-center space-x-6">
+                    <div class="text-center">
+                        <div id="hp-bar" class="bar"><div id="hp-bar-fill" class="bar-fill"></div></div>
+                        <p id="player-hp-text" class="text-sm font-bold"></p>
+                    </div>
+                    <p class="font-bold text-2xl text-yellow-400" id="player-tokens">TOKENS: 0</p>
+                     <div class="text-center">
+                        <div id="xp-bar" class="bar"><div id="xp-bar-fill" class="bar-fill"></div></div>
+                        <p id="player-xp-text" class="text-sm font-bold"></p>
                     </div>
                 </div>
-                 <p class="text-lg text-gray-400" id="game-message">Usa las flechas para moverte.</p>
+                <p class="text-lg text-gray-400" id="game-message">Usa las flechas para moverte. Espacio para atacar.</p>
             </div>
         </div>
     </div>
@@ -107,11 +113,13 @@
         const gameScreen = document.getElementById('game-screen');
         const userPubKeyEl = document.getElementById('user-pubkey');
         const statusMessage = document.getElementById('status-message');
-        const playerHpEl = document.getElementById('player-hp');
+        const hpBarFill = document.getElementById('hp-bar-fill');
+        const playerHpText = document.getElementById('player-hp-text');
+        const xpBarFill = document.getElementById('xp-bar-fill');
+        const playerXpText = document.getElementById('player-xp-text');
         const playerTokensEl = document.getElementById('player-tokens');
         const gameMessageEl = document.getElementById('game-message');
         const gameCanvasContainer = document.getElementById('game-canvas-container');
-        const attackCooldownFill = document.getElementById('attack-cooldown-fill');
         const powerupScreen = document.getElementById('powerup-screen');
         const powerupChoices = document.getElementById('powerup-choices');
         const powersList = document.getElementById('powers-list');
@@ -137,46 +145,34 @@
 
         // --- Sistema de Poderes ---
         const POWERS = {
-            fireball: {
-                name: 'Bola de Fuego',
-                type: 'active',
-                maxLevel: 5,
-                timer: 0,
+            fireball: { name: 'Bola de Fuego', type: 'active', maxLevel: 5, timer: 0, cooldown: 5,
                 getDescription: (level) => `Lanza una bola de fuego cada ${ (5 - level * 0.5).toFixed(1) }s que inflige ${10 + level * 5} de daño.`,
                 onUpdate: (delta, level) => {
                     POWERS.fireball.timer -= delta;
                     if (POWERS.fireball.timer <= 0) {
-                        POWERS.fireball.timer = 5 - level * 0.5;
+                        POWERS.fireball.cooldown = 5 - level * 0.5;
+                        POWERS.fireball.timer = POWERS.fireball.cooldown;
                         const closestEnemy = findClosestEnemy(playerModel.position);
-                        if (closestEnemy) {
-                            createProjectile('fireball', playerModel.position, closestEnemy.mesh.position, 10 + level * 5);
-                        }
+                        if (closestEnemy) createProjectile('fireball', playerModel.position, closestEnemy.mesh.position, 10 + level * 5);
                     }
                 },
             },
-            shockwave: {
-                name: 'Onda Expansiva',
-                type: 'active',
-                maxLevel: 5,
-                timer: 0,
+            shockwave: { name: 'Onda Expansiva', type: 'active', maxLevel: 5, timer: 0, cooldown: 8,
                 getDescription: (level) => `Emite una onda cada ${ (8 - level).toFixed(1) }s que inflige ${5 + level * 5} de daño en área.`,
                 onUpdate: (delta, level) => {
                     POWERS.shockwave.timer -= delta;
                     if (POWERS.shockwave.timer <= 0) {
-                        POWERS.shockwave.timer = 8 - level;
+                        POWERS.shockwave.cooldown = 8 - level;
+                        POWERS.shockwave.timer = POWERS.shockwave.cooldown;
                         createEffect('shockwave', playerModel.position, 5 + level * 5);
                     }
                 },
             },
-            max_hp_up: {
-                name: 'Más Vida',
-                type: 'passive',
-                maxLevel: 10,
-                getDescription: (level) => `Aumenta tu vida máxima en ${10 * level}.`,
+            max_hp_up: { name: 'Más Vida', type: 'passive', maxLevel: 10,
+                getDescription: (level) => `Aumenta tu vida máxima en 20.`,
                 onAcquire: (level) => {
-                    gameState.maxHp += 10;
-                    gameState.hp += 10; // Curar al subir de nivel
-                    playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
+                    gameState.maxHp += 20;
+                    gameState.hp += 20;
                 },
             }
         };
@@ -232,7 +228,7 @@
                 if (playerDoc.exists()) {
                     return playerDoc.data();
                 } else {
-                    const defaultData = { hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0, powers: {} };
+                    const defaultData = { hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0, powers: {}, level: 1, xp: 0, wave: 1 };
                     await savePlayerData(userId, defaultData);
                     return defaultData;
                 }
@@ -321,7 +317,11 @@
             });
         }
 
-        function createEnemiesAndChests() {
+        function startNextWave() {
+            gameState.wave++;
+            const numEnemies = 5 + gameState.wave;
+            const numChests = 1 + Math.floor(gameState.wave / 5);
+
             enemies.forEach(e => scene.remove(e.mesh));
             enemies = [];
             chests.forEach(c => scene.remove(c));
@@ -329,28 +329,54 @@
 
             const enemyGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
             const enemyMat = new THREE.MeshStandardMaterial({ color: 0xff4d4d });
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < numEnemies; i++) {
                 const mesh = new THREE.Mesh(enemyGeo, enemyMat);
                 mesh.position.set((Math.random() * 40 - 20), 0.75, (Math.random() * 40 - 20));
-                enemies.push({ mesh, hp: 50, maxHp: 50, damage: 5, tokenValue: 10, attackTimer: 1.5 });
+                enemies.push({ mesh, hp: 50 * gameState.wave, maxHp: 50 * gameState.wave, damage: 5 + gameState.wave, tokenValue: 10, xpValue: 20, attackTimer: 1.5 });
                 scene.add(mesh);
             }
 
             const chestGeo = new THREE.BoxGeometry(1, 1, 1);
             const chestMat = new THREE.MeshStandardMaterial({ color: 0xffd700 });
-            for (let i = 0; i < 2; i++) {
+            for (let i = 0; i < numChests; i++) {
                 const chest = new THREE.Mesh(chestGeo, chestMat);
                 chest.position.set((Math.random() * 40 - 20), 0.5, (Math.random() * 40 - 20));
                 chests.push(chest);
                 scene.add(chest);
             }
         }
+
+        function xpForNextLevel() {
+            return 100 * Math.pow(1.5, gameState.level - 1);
+        }
+
+        function gainXP(amount) {
+            gameState.xp += amount;
+            if (gameState.xp >= xpForNextLevel()) {
+                gameState.xp -= xpForNextLevel();
+                gameState.level++;
+                isPaused = true;
+                showPowerUpSelection();
+            }
+        }
+
+        function updateUI() {
+            // HP Bar
+            const hpPercent = (gameState.hp / gameState.maxHp) * 100;
+            hpBarFill.style.width = `${hpPercent}%`;
+            playerHpText.textContent = `HP: ${Math.ceil(gameState.hp)} / ${gameState.maxHp}`;
+            // XP Bar
+            const xpPercent = (gameState.xp / xpForNextLevel()) * 100;
+            xpBarFill.style.width = `${xpPercent}%`;
+            playerXpText.textContent = `LVL ${gameState.level} (${Math.floor(gameState.xp)}/${Math.floor(xpForNextLevel())} XP)`;
+            // Tokens
+            playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
+            // Powers Cooldown
+            updatePowersDisplay();
+        }
         
         function updatePlayer(delta) {
             if (!playerModel || gameState.hp <= 0) return;
-
-            playerAttackTimer += delta;
-            attackCooldownFill.style.width = `${Math.min(playerAttackTimer / ATTACK_COOLDOWN, 1) * 100}%`;
 
             const moveDirection = new THREE.Vector3(0, 0, 0);
             if (keysPressed['ArrowUp'] || keysPressed['KeyW']) moveDirection.z -= 1;
@@ -370,10 +396,7 @@
                         enemy.hp -= gameState.damage;
                         showFloatingText(`-${gameState.damage}`, enemy.mesh.position, '#ff4d4d');
                         if (enemy.hp <= 0) {
-                            gameState.tokens += enemy.tokenValue;
-                            playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
-                            scene.remove(enemy.mesh);
-                            enemies = enemies.filter(e => e !== enemy);
+                           handleEnemyDeath(enemy);
                         }
                     }
                 });
@@ -402,12 +425,25 @@
                 } else if (enemy.attackTimer >= 1.5) {
                     enemy.attackTimer = 0;
                     gameState.hp -= enemy.damage;
-                    playerHpEl.textContent = `HP: ${Math.max(0, gameState.hp)}/${gameState.maxHp}`;
                     showFloatingText(`-${enemy.damage}`, playerModel.position, '#ffffff');
                     shakeCamera(0.3, 0.25);
-                     if (gameState.hp <= 0) gameMessageEl.textContent = "¡Has sido derrotado!";
+                     if (gameState.hp <= 0) {
+                         gameState.hp = 0;
+                         gameMessageEl.textContent = "¡Has sido derrotado!";
+                     }
                 }
              });
+        }
+        
+        function handleEnemyDeath(enemy) {
+            gainXP(enemy.xpValue);
+            gameState.tokens += enemy.tokenValue;
+            scene.remove(enemy.mesh);
+            enemies = enemies.filter(e => e !== enemy);
+
+            if (enemies.length === 0) {
+                startNextWave();
+            }
         }
 
         // --- Funciones de Poderes y Efectos ---
@@ -447,6 +483,7 @@
         }
 
         function updatePowers(delta) {
+             if (gameState.hp <= 0) return;
             for (const powerId in gameState.powers) {
                 const powerData = POWERS[powerId];
                 if (powerData.type === 'active') {
@@ -463,15 +500,10 @@
                     projectiles.splice(i, 1);
                 }
                 enemies.forEach(e => {
-                    if (p.mesh.position.distanceTo(e.mesh.position) < 1.0) {
+                    if (e && p && p.mesh.position.distanceTo(e.mesh.position) < 1.0) {
                         e.hp -= p.damage;
                         showFloatingText(`-${p.damage}`, e.mesh.position, '#ff4d4d');
-                         if (e.hp <= 0) {
-                            gameState.tokens += e.tokenValue;
-                            playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
-                            scene.remove(e.mesh);
-                            enemies = enemies.filter(en => en !== e);
-                        }
+                         if (e.hp <= 0) handleEnemyDeath(e);
                         scene.remove(p.mesh);
                         projectiles.splice(i, 1);
                     }
@@ -497,12 +529,7 @@
                                 showFloatingText(`-${ef.damage}`, e.mesh.position, '#ff4d4d');
                                 if (!e.hitBy) e.hitBy = [];
                                 e.hitBy.push(ef);
-                                if (e.hp <= 0) {
-                                    gameState.tokens += e.tokenValue;
-                                    playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
-                                    scene.remove(e.mesh);
-                                    enemies = enemies.filter(en => en !== e);
-                                }
+                                if (e.hp <= 0) handleEnemyDeath(e);
                             }
                         }
                     });
@@ -551,7 +578,6 @@
                 power.onAcquire(currentLevel + 1);
             }
             
-            updatePowersDisplay();
             savePlayerData(userPublicKey.toBase58(), gameState);
             
             powerupScreen.classList.add('hidden');
@@ -564,8 +590,14 @@
                 const power = POWERS[powerId];
                 const level = gameState.powers[powerId].level;
                 const el = document.createElement('div');
-                el.className = 'text-center';
+                el.className = 'text-center bg-gray-800 p-1 rounded relative overflow-hidden';
                 el.innerHTML = `<span class="text-xs font-bold">${power.name.substring(0,4)}</span><br/><span class="text-lg font-black">L${level}</span>`;
+                if (power.type === 'active') {
+                    const cooldownDiv = document.createElement('div');
+                    cooldownDiv.className = 'power-cooldown';
+                    cooldownDiv.id = `cooldown-${powerId}`;
+                    el.appendChild(cooldownDiv);
+                }
                 powersList.appendChild(el);
             }
         }
@@ -608,6 +640,7 @@
             updateEnemies(delta);
             updatePowers(delta);
             updateProjectilesAndEffects(delta);
+            updateUI();
 
             const now = performance.now();
             floatingTexts.forEach((text, index) => {
@@ -629,6 +662,14 @@
                 camera.lookAt(scene.position);
             }
 
+            for (const powerId in gameState.powers) {
+                 const power = POWERS[powerId];
+                 if(power.type === 'active') {
+                    const el = document.getElementById(`cooldown-${powerId}`);
+                    if(el) el.style.width = `${ (power.timer / power.cooldown) * 100 }%`;
+                 }
+            }
+            
             renderer.render(scene, camera);
         }
 
@@ -642,32 +683,29 @@
             }
             
             gameState = {
-                hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0, powers: {},
-                ...playerData
+                hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0, powers: {}, level: 1, xp: 0, wave: 0
+                ,...playerData
             };
             
             loginScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
             userPubKeyEl.textContent = userId;
-            playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
-            playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
-            updatePowersDisplay();
-            
-            // Aplicar efectos pasivos al cargar
-            for (const powerId in gameState.powers) {
-                const power = POWERS[powerId];
-                if(power.type === 'passive' && power.onAcquire) {
-                    // Solo aplicar el efecto del último nivel
-                    const level = gameState.powers[powerId].level;
-                    power.onAcquire(level);
-                }
-            }
             
             init3D();
             generateMap3D();
             loadPlayerModel(gameState);
-            createEnemiesAndChests();
+            startNextWave();
             animate();
+            
+            // Aplicar efectos pasivos después de que el gameState esté completo
+            for (const powerId in gameState.powers) {
+                const power = POWERS[powerId];
+                if(power.type === 'passive' && power.onAcquire) {
+                    // This is tricky, passive stats should be calculated once at start
+                }
+            }
+            updateUI();
+            
             window.addEventListener('keydown', (e) => keysPressed[e.code] = true);
             window.addEventListener('keyup', (e) => keysPressed[e.code] = false);
         };
