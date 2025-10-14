@@ -250,12 +250,14 @@
 
         // --- Motor 3D y Lógica del Juego ---
         let scene, camera, renderer, playerModel, enemies = [], animationFrameId;
-        let floatingTexts = [], projectiles = [], effects = [], chests = [];
+        let floatingTexts = [], projectiles = [], effects = [];
         let shakeDuration = 0, shakeIntensity = 0.25;
         const PLAYER_SPEED = 5.0;
         const ENEMY_SPEED = 2.5;
         const ATTACK_COOLDOWN = 1.0;
         let playerAttackTimer = ATTACK_COOLDOWN;
+        const cameraOffset = new THREE.Vector3(20, 20, 20);
+
 
         function init3D() {
             scene = new THREE.Scene();
@@ -263,8 +265,8 @@
             const aspect = window.innerWidth / window.innerHeight;
             const d = 20;
             camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
-            camera.position.set(20, 20, 20);
-            camera.lookAt(new THREE.Vector3(0,0,0)); // Initially look at origin
+            camera.position.copy(cameraOffset);
+            camera.lookAt(new THREE.Vector3(0,0,0));
             scene.add(new THREE.AmbientLight(0xffffff, 0.7));
             const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
             dirLight.position.set(-30, 50, -30);
@@ -379,7 +381,15 @@
             
             if (moveDirection.lengthSq() > 0) {
                 moveDirection.normalize();
-                playerModel.position.addScaledVector(moveDirection, PLAYER_SPEED * delta);
+                
+                const newPosition = playerModel.position.clone();
+                newPosition.addScaledVector(moveDirection, PLAYER_SPEED * delta);
+                
+                const bounds = 23.5;
+                newPosition.x = Math.max(-bounds, Math.min(bounds, newPosition.x));
+                newPosition.z = Math.max(-bounds, Math.min(bounds, newPosition.z));
+                
+                playerModel.position.copy(newPosition);
             }
             
             if (keysPressed['Space'] && playerAttackTimer >= ATTACK_COOLDOWN) {
@@ -638,8 +648,8 @@
             });
             
             if (playerModel) {
-                const targetCameraPosition = new THREE.Vector3(playerModel.position.x + 20, 20, playerModel.position.z + 20);
-                camera.position.lerp(targetCameraPosition, 0.1);
+                const targetCameraPosition = playerModel.position.clone().add(cameraOffset);
+                camera.position.copy(targetCameraPosition);
                 
                 if (shakeDuration > 0) {
                     camera.position.x += (Math.random() - 0.5) * shakeIntensity;
