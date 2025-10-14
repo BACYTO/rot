@@ -41,7 +41,7 @@
                 <svg width="80" height="80" viewBox="0 0 101 101" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M50.5 101C78.39 101 101 78.39 101 50.5C101 22.61 78.39 0 50.5 0C22.61 0 0 22.61 0 50.5C0 78.39 22.61 101 50.5 101Z" fill="#201F25"></path><path d="M50.5 86.848C69.19 86.848 84.444 71.594 84.444 52.904C84.444 34.214 69.19 18.96 50.5 18.96C31.81 18.96 16.556 34.214 16.556 52.904C16.556 71.594 31.81 86.848 50.5 86.848Z" fill="url(#paint0_linear_14_254)"></path><path d="M50.5002 89.208C30.4182 89.208 14.1942 72.984 14.1942 52.902C14.1942 32.82 30.4182 16.596 50.5002 16.596C70.5822 16.596 86.8062 32.82 86.8062 52.902C86.8062 72.984 70.5822 89.208 50.5002 89.208ZM50.5002 18.956C31.8102 18.956 16.5562 34.21 16.5562 52.9C16.5562 71.59 31.8102 86.844 50.5002 86.844C69.1902 86.844 84.4442 71.59 84.4442 52.9C84.4442 34.21 69.1902 18.956 50.5002 18.956Z" fill="#A55CFD"></path><path d="M50.5 68.618C59.348 68.618 66.52 61.446 66.52 52.598C66.52 43.75 59.348 36.578 50.5 36.578C41.652 36.578 34.48 43.75 34.48 52.598C34.48 61.446 41.652 68.618 50.5 68.618Z" fill="white"></path><defs><linearGradient id="paint0_linear_14_254" x1="50.5" y1="18.96" x2="50.5" y2="86.848" gradientUnits="userSpaceOnUse"><stop stop-color="#A55CFD"></stop><stop offset="1" stop-color="#583CFF"></stop></linearGradient></defs></svg>
             </div>
             <h1 class="text-3xl font-bold">Phantom Roguelike 3D</h1>
-            <p id="status-message" class="text-gray-400 h-6">Conecta tu billetera para explorar la mazmorra11.</p>
+            <p id="status-message" class="text-gray-400 h-6">Conecta tu billetera para explorar la mazmorra.</p>
             <button id="connect-wallet-btn" class="w-full btn-phantom text-white font-bold py-3 px-4 rounded-xl text-lg">
                 Conectar con Phantom
             </button>
@@ -89,8 +89,6 @@
         let gameState = {};
         
         // --- Configuración de la API de Base de Datos ---
-        // IMPORTANTE: Ve a https://kvdb.io/, crea un bucket y pega la URL aquí.
-        // Debe terminar en una barra inclinada '/', por ejemplo: https://kvdb.io/AbCd1234EfGh5678/
         const KV_DATABASE_URL = "https://kvdb.io/45r7KwPnLPUKVFqtPuRAXU/";
 
         if (KV_DATABASE_URL === "PEGA_AQUI_TU_URL_DE_KVDB.IO/") {
@@ -261,6 +259,7 @@
                 scene.add(playerModel);
             }, undefined, (error) => {
                 console.error("Error cargando el modelo del jugador, usando un cubo como fallback:", error);
+                gameMessageEl.textContent = "Error: No se pudo cargar el modelo del jugador.";
                 const geometry = new THREE.BoxGeometry(1, 1.5, 1);
                 const material = new THREE.MeshStandardMaterial({ color: 0x583cff });
                 playerModel = new THREE.Mesh(geometry, material);
@@ -320,4 +319,3 @@
     </script>
 </body>
 </html>
-
