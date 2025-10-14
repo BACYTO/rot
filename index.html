@@ -359,7 +359,7 @@
                 
                 let attackedEnemy = enemies.find(e => e.mesh.position.x === targetPosition.x && e.mesh.position.z === targetPosition.z);
         
-                animateAttack(playerModel, moveDirection);
+                animateAttack(playerModel, moveDirection, 1, 150);
 
                 if (attackedEnemy) {
                     attackedEnemy.hp -= gameState.damage;
@@ -379,7 +379,6 @@
                     }
                 } else {
                     playerModel.position.copy(targetPosition);
-                    gameMessageEl.textContent = 'Te mueves...';
                 }
                 setTimeout(handleEnemyTurns, 300);
             }
@@ -403,9 +402,8 @@
                     targetPos.z += Math.sign(dz) * TILE_SIZE;
                 }
         
-                animateAttack(enemy.mesh, direction);
-
                 if (targetPos.x === playerPos.x && targetPos.z === playerPos.z) {
+                     animateAttack(enemy.mesh, direction);
                     gameState.hp -= enemy.damage;
                     playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
                     showFloatingText(`-${enemy.damage}`, playerModel.position, '#ff4d4d');
@@ -507,7 +505,15 @@
                 return;
             }
             
-            gameState = playerData;
+            // Asegurar que gameState tenga todos los valores por defecto
+            gameState = {
+                hp: 10, 
+                maxHp: 10, 
+                damage: 2, 
+                position: { x: 0, z: 0 }, 
+                tokens: 0,
+                ...playerData
+            };
             
             loginScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
