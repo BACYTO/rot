@@ -286,7 +286,7 @@
         }
 
         const handleLoginSuccess = async () => {
-            const userId = userPublicKey.toBase8();
+            const userId = userPublicKey.toBase58();
             const playerData = await loadPlayerData(userId);
             
             if(!playerData) {
