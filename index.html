@@ -94,7 +94,7 @@
                         <p id="player-xp-text" class="text-sm font-bold"></p>
                     </div>
                 </div>
-                <p class="text-lg text-gray-400" id="game-message">Usa las flechas para moverte. Espacio para atacar.</p>
+                <p class="text-lg text-gray-400" id="game-message">Usa W, A, S, D para moverte. Espacio para atacar.</p>
             </div>
         </div>
     </div>
@@ -322,13 +322,10 @@
         function startNextWave() {
             gameState.wave++;
             const numEnemies = 5 + gameState.wave;
-            const numChests = 1 + Math.floor(gameState.wave / 5);
-
+            
             enemies.forEach(e => scene.remove(e.mesh));
             enemies = [];
-            chests.forEach(c => scene.remove(c));
-            chests = [];
-
+            
             const enemyGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
             const enemyMat = new THREE.MeshStandardMaterial({ color: 0xff4d4d });
             for (let i = 0; i < numEnemies; i++) {
@@ -346,7 +343,7 @@
         function gainXP(amount) {
             if (gameState.hp <= 0) return;
             gameState.xp += amount;
-            if (gameState.xp >= xpForNextLevel()) {
+            while (gameState.xp >= xpForNextLevel()) {
                 gameState.xp -= xpForNextLevel();
                 gameState.level++;
                 isPaused = true;
@@ -375,10 +372,10 @@
             playerAttackTimer += delta;
             
             const moveDirection = new THREE.Vector3(0, 0, 0);
-            if (keysPressed['ArrowUp'] || keysPressed['KeyW']) moveDirection.z -= 1;
-            if (keysPressed['ArrowDown'] || keysPressed['KeyS']) moveDirection.z += 1;
-            if (keysPressed['ArrowLeft'] || keysPressed['KeyA']) moveDirection.x -= 1;
-            if (keysPressed['ArrowRight'] || keysPressed['KeyD']) moveDirection.x += 1;
+            if (keysPressed['KeyW']) moveDirection.z -= 1;
+            if (keysPressed['KeyS']) moveDirection.z += 1;
+            if (keysPressed['KeyA']) moveDirection.x -= 1;
+            if (keysPressed['KeyD']) moveDirection.x += 1;
             
             if (moveDirection.lengthSq() > 0) {
                 moveDirection.normalize();
@@ -397,16 +394,6 @@
                     }
                 });
             }
-
-            // Chest collision
-            chests.forEach((chest, index) => {
-                if (playerModel.position.distanceTo(chest.position) < 1.5) {
-                    scene.remove(chest);
-                    chests.splice(index, 1);
-                    isPaused = true;
-                    showPowerUpSelection();
-                }
-            });
         }
         
         function updateEnemies(delta) {
@@ -540,7 +527,7 @@
             while (choices.length < 3 && Object.keys(availablePicks).length > 0) {
                 const randomIndex = Math.floor(Math.random() * Object.keys(availablePicks).length);
                 const randomKey = Object.keys(availablePicks)[randomIndex];
-                const currentLevel = gameState.powers[randomKey]?.level || 0;
+                const currentLevel = (gameState.powers && gameState.powers[randomKey]?.level) || 0;
                 if (currentLevel < availablePicks[randomKey].maxLevel) {
                     choices.push(randomKey);
                 }
@@ -549,7 +536,7 @@
 
             choices.forEach(powerId => {
                 const power = POWERS[powerId];
-                const currentLevel = gameState.powers[powerId]?.level || 0;
+                const currentLevel = (gameState.powers && gameState.powers[powerId]?.level) || 0;
                 const card = document.createElement('div');
                 card.className = 'power-card card p-6 rounded-lg cursor-pointer w-64';
                 card.innerHTML = `
@@ -652,7 +639,7 @@
             
             if (playerModel) {
                 const targetCameraPosition = new THREE.Vector3(playerModel.position.x + 20, 20, playerModel.position.z + 20);
-                camera.position.copy(targetCameraPosition);
+                camera.position.lerp(targetCameraPosition, 0.1);
                 
                 if (shakeDuration > 0) {
                     camera.position.x += (Math.random() - 0.5) * shakeIntensity;
@@ -700,7 +687,7 @@
             
             // Recalculate stats based on passive powers on load
             let initialMaxHp = 100;
-            if(gameState.powers.max_hp_up) {
+            if(gameState.powers && gameState.powers.max_hp_up) {
                 initialMaxHp += 20 * gameState.powers.max_hp_up.level;
             }
             gameState.maxHp = initialMaxHp;
