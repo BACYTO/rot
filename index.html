@@ -61,8 +61,9 @@
                     <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Desconectar</button>
                 </div>
             </div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 card p-4 rounded-xl text-center">
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 card p-4 rounded-xl text-center flex items-center space-x-6">
                  <p class="font-bold text-2xl" id="player-hp">HP: 10/10</p>
+                 <p class="font-bold text-2xl text-yellow-400" id="player-tokens">TOKENS: 0</p>
                  <p class="text-lg text-gray-400" id="game-message">Usa las flechas para moverte.</p>
             </div>
         </div>
@@ -83,6 +84,7 @@
         const userPubKeyEl = document.getElementById('user-pubkey');
         const statusMessage = document.getElementById('status-message');
         const playerHpEl = document.getElementById('player-hp');
+        const playerTokensEl = document.getElementById('player-tokens');
         const gameMessageEl = document.getElementById('game-message');
         const gameCanvasContainer = document.getElementById('game-canvas-container');
 
@@ -90,6 +92,7 @@
         let userPublicKey = null;
         let gameState = {};
         let isPlayerTurn = true;
+        let clock = new THREE.Clock();
         
         // --- Configuración de Firebase ---
         const firebaseConfig = {
@@ -162,7 +165,7 @@
                     return playerDoc.data();
                 } else {
                     console.log("No existe el jugador en Firestore. Creando uno nuevo.");
-                    const defaultData = { hp: 10, maxHp: 10, damage: 2, position: { x: 0, z: 0 }, score: 0 };
+                    const defaultData = { hp: 10, maxHp: 10, damage: 2, position: { x: 0, z: 0 }, tokens: 0 };
                     await savePlayerData(userId, defaultData);
                     return defaultData;
                 }
@@ -189,7 +192,9 @@
 
 
         // --- Motor 3D y Lógica del Juego ---
-        let scene, camera, renderer, playerModel, enemies = [], animationFrameId;
+        let scene, camera, renderer, playerModel, enemies = [], animationFrameId, exitPortal;
+        let floatingTexts = [];
+        let shakeDuration = 0, shakeIntensity = 0.25;
         const TILE_SIZE = 2;
 
         function init3D() {
@@ -251,6 +256,14 @@
                     scene.add(wall4);
                  }
             }
+
+            // Crear Portal de Salida
+            const exitGeometry = new THREE.CylinderGeometry(0.8, 0.8, 0.2, 16);
+            const exitMaterial = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.5 });
+            exitPortal = new THREE.Mesh(exitGeometry, exitMaterial);
+            exitPortal.position.set(10 * TILE_SIZE, 0.1, 10 * TILE_SIZE);
+            exitPortal.visible = false; // Oculto hasta que se derroten los enemigos
+            scene.add(exitPortal);
         }
         
         function loadPlayerModel(playerData) {
@@ -272,6 +285,7 @@
         }
 
         function createEnemies() {
+             enemies.forEach(e => scene.remove(e.mesh)); // Limpiar enemigos anteriores
             enemies = [];
             const enemyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
             const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff4d4d });
@@ -279,19 +293,40 @@
                 const mesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
                 let posOk = false;
                 while (!posOk) {
-                    const x = Math.floor((Math.random() - 0.5) * 10) * TILE_SIZE;
-                    const z = Math.floor((Math.random() - 0.5) * 10) * TILE_SIZE;
+                    const x = Math.floor((Math.random() * 10 - 5)) * TILE_SIZE;
+                    const z = Math.floor((Math.random() * 10 - 5)) * TILE_SIZE;
                     mesh.position.set(x, 0.75, z);
-                    const playerConflict = playerModel && mesh.position.equals(playerModel.position);
+                    const playerConflict = playerModel && mesh.position.distanceTo(playerModel.position) < TILE_SIZE * 2;
                     const enemyConflict = enemies.some(e => e.mesh.position.equals(mesh.position));
-                    if (!playerConflict && !enemyConflict && (x !== 0 || z !== 0)) {
-                        posOk = true;
-                    }
+                    if (!playerConflict && !enemyConflict) posOk = true;
                 }
-                const enemy = { mesh, hp: 5, maxHp: 5, damage: 1 };
+                const enemy = { mesh, hp: 5, maxHp: 5, damage: 1, tokenValue: 10 };
                 enemies.push(enemy);
                 scene.add(mesh);
             }
+             exitPortal.visible = false;
+        }
+
+        function animateAttack(model, direction, distance = 1, duration = 100) {
+            const startPos = model.position.clone();
+            const targetPos = startPos.clone().addScaledVector(direction, distance);
+            const startTime = performance.now();
+
+            function lunge() {
+                const elapsed = performance.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Ir y volver
+                const backAndForth = Math.sin(progress * Math.PI);
+                model.position.copy(startPos).addScaledVector(direction, backAndForth * distance);
+
+                if (progress < 1) {
+                    requestAnimationFrame(lunge);
+                } else {
+                    model.position.copy(startPos); // Asegurar posición final
+                }
+            }
+            lunge();
         }
 
         function handlePlayerTurn(event) {
@@ -299,31 +334,54 @@
         
             let moved = false;
             const targetPosition = playerModel.position.clone();
+            let moveDirection = new THREE.Vector3();
         
             switch (event.key) {
-                case 'ArrowUp': targetPosition.z -= TILE_SIZE; moved = true; break;
-                case 'ArrowDown': targetPosition.z += TILE_SIZE; moved = true; break;
-                case 'ArrowLeft': targetPosition.x -= TILE_SIZE; moved = true; break;
-                case 'ArrowRight': targetPosition.x += TILE_SIZE; moved = true; break;
+                case 'ArrowUp': targetPosition.z -= TILE_SIZE; moveDirection.set(0,0,-1); moved = true; break;
+                case 'ArrowDown': targetPosition.z += TILE_SIZE; moveDirection.set(0,0,1); moved = true; break;
+                case 'ArrowLeft': targetPosition.x -= TILE_SIZE; moveDirection.set(-1,0,0); moved = true; break;
+                case 'ArrowRight': targetPosition.x += TILE_SIZE; moveDirection.set(1,0,0); moved = true; break;
             }
         
             if (moved) {
                 isPlayerTurn = false;
+
+                // Chequear si se mueve al portal
+                if (exitPortal.visible && targetPosition.x === exitPortal.position.x && targetPosition.z === exitPortal.position.z) {
+                    gameMessageEl.textContent = '¡Nivel completado!';
+                    savePlayerData(userPublicKey.toBase58(), gameState);
+                    playerModel.position.set(0, 0, 0); // Reiniciar posición
+                    gameState.position = {x: 0, z: 0};
+                    createEnemies(); // Crear nuevos enemigos
+                    isPlayerTurn = true;
+                    return;
+                }
+                
                 let attackedEnemy = enemies.find(e => e.mesh.position.x === targetPosition.x && e.mesh.position.z === targetPosition.z);
         
+                animateAttack(playerModel, moveDirection);
+
                 if (attackedEnemy) {
                     attackedEnemy.hp -= gameState.damage;
-                    gameMessageEl.textContent = `Atacas al enemigo! HP restante: ${attackedEnemy.hp}`;
+                    showFloatingText(`-${gameState.damage}`, attackedEnemy.mesh.position, '#ff4d4d');
                     if (attackedEnemy.hp <= 0) {
+                        gameState.tokens += attackedEnemy.tokenValue;
+                        playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
+                        showFloatingText(`+${attackedEnemy.tokenValue}T`, attackedEnemy.mesh.position, '#ffd700');
                         scene.remove(attackedEnemy.mesh);
                         enemies = enemies.filter(e => e !== attackedEnemy);
                         gameMessageEl.textContent = '¡Enemigo derrotado!';
+
+                        if (enemies.length === 0) {
+                           exitPortal.visible = true;
+                           gameMessageEl.textContent = '¡Portal abierto! Escapa.';
+                        }
                     }
                 } else {
                     playerModel.position.copy(targetPosition);
                     gameMessageEl.textContent = 'Te mueves...';
                 }
-                setTimeout(handleEnemyTurns, 200);
+                setTimeout(handleEnemyTurns, 300);
             }
         }
 
@@ -333,11 +391,11 @@
             enemies.forEach(enemy => {
                 const enemyPos = enemy.mesh.position;
                 const playerPos = playerModel.position;
-        
+                const direction = playerPos.clone().sub(enemyPos).normalize();
+
+                const targetPos = enemyPos.clone();
                 const dx = playerPos.x - enemyPos.x;
                 const dz = playerPos.z - enemyPos.z;
-        
-                const targetPos = enemyPos.clone();
         
                 if (Math.abs(dx) > Math.abs(dz)) {
                     targetPos.x += Math.sign(dx) * TILE_SIZE;
@@ -345,28 +403,98 @@
                     targetPos.z += Math.sign(dz) * TILE_SIZE;
                 }
         
+                animateAttack(enemy.mesh, direction);
+
                 if (targetPos.x === playerPos.x && targetPos.z === playerPos.z) {
                     gameState.hp -= enemy.damage;
                     playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
-                    gameMessageEl.textContent = `¡Te ataca un enemigo!`;
+                    showFloatingText(`-${enemy.damage}`, playerModel.position, '#ff4d4d');
+                    shakeCamera(0.3, 0.25);
                     if (gameState.hp <= 0) {
                         gameMessageEl.textContent = "¡Has sido derrotado! Fin del juego.";
                         playerHpEl.textContent = `HP: 0/${gameState.maxHp}`;
                         return;
                     }
                 } else {
-                    const isBlocked = enemies.some(e => e.mesh.position.equals(targetPos));
+                    const isBlocked = enemies.some(e => e !== enemy && e.mesh.position.equals(targetPos));
                     if (!isBlocked) {
                         enemy.mesh.position.copy(targetPos);
                     }
                 }
             });
         
-            isPlayerTurn = true;
+            setTimeout(() => { isPlayerTurn = true; }, 200);
+        }
+
+        function createTextSprite(message, opts) {
+            const fontface = opts.fontface || 'Inter';
+            const fontsize = opts.fontsize || 24;
+            const color = opts.color || '#FFFFFF';
+        
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            context.font = `Bold ${fontsize}px ${fontface}`;
+            const metrics = context.measureText(message);
+            const textWidth = metrics.width;
+        
+            canvas.width = textWidth;
+            canvas.height = fontsize;
+            context.font = `Bold ${fontsize}px ${fontface}`;
+            context.fillStyle = color;
+            context.fillText(message, 0, fontsize - 2);
+        
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+        
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(textWidth/fontsize * 2, 2, 1.0);
+            return sprite;
+        }
+
+        function showFloatingText(text, position, color) {
+            const sprite = createTextSprite(text, { fontsize: 32, color: color });
+            sprite.position.copy(position).add(new THREE.Vector3(0, 1.5, 0));
+            const textObj = {
+                sprite: sprite,
+                startTime: performance.now(),
+                duration: 1500, // ms
+            };
+            floatingTexts.push(textObj);
+            scene.add(sprite);
+        }
+        
+        function shakeCamera(duration, intensity) {
+            shakeDuration = duration;
+            shakeIntensity = intensity;
         }
 
         function animate() {
             animationFrameId = requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            
+            // Actualizar textos flotantes
+            const now = performance.now();
+            floatingTexts.forEach((text, index) => {
+                const elapsed = now - text.startTime;
+                if (elapsed > text.duration) {
+                    scene.remove(text.sprite);
+                    floatingTexts.splice(index, 1);
+                } else {
+                    text.sprite.position.y += 0.02;
+                    text.sprite.material.opacity = 1.0 - (elapsed / text.duration);
+                }
+            });
+
+            // Actualizar screen shake
+            if (shakeDuration > 0) {
+                camera.position.x += (Math.random() - 0.5) * shakeIntensity;
+                camera.position.z += (Math.random() - 0.5) * shakeIntensity;
+                shakeDuration -= delta;
+            } else {
+                camera.lookAt(scene.position); // Asegurar que la cámara mire al centro
+            }
+
             renderer.render(scene, camera);
         }
 
@@ -385,6 +513,7 @@
             gameScreen.classList.remove('hidden');
             userPubKeyEl.textContent = userId;
             playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
+            playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
             
             init3D();
             generateMap3D();
@@ -400,7 +529,7 @@
         saveButton.addEventListener('click', () => {
             if (!userPublicKey || !playerModel) return;
             gameState.position = { x: playerModel.position.x / TILE_SIZE, z: playerModel.position.z / TILE_SIZE };
-            savePlayerData(userPublicKey.toBase58(), gameState);
+            savePlayerData(userPublicKey.toBase5á(userPublicKey.toBase58(), gameState);
         });
     </script>
 </body>
