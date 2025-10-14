@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Juego Roguelike 3D con API REST</title>
+    <title>Juego Roguelike 3D con Firebase</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- tweetnacl para verificación de firmas -->
@@ -71,6 +71,8 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
         
         // --- Elementos del DOM y Estado Global ---
         const connectButton = document.getElementById('connect-wallet-btn');
@@ -88,12 +90,19 @@
         let userPublicKey = null;
         let gameState = {};
         
-        // --- Configuración de la API de Base de Datos ---
-        const KV_DATABASE_URL = "https://kvdb.io/45r7KwPnLPUKVFqtPuRAXU/";
+        // --- Configuración de Firebase ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyDNKaie44jLjb8Xl2Si2nlbU5J_njT-2Kc",
+          authDomain: "brainrotv2.firebaseapp.com",
+          projectId: "brainrotv2",
+          storageBucket: "brainrotv2.firebasestorage.app",
+          messagingSenderId: "834208217383",
+          appId: "1:834208217383:web:46d5539a0f2ae2b8ead102"
+        };
 
-        if (KV_DATABASE_URL === "PEGA_AQUI_TU_URL_DE_KVDB.IO/") {
-            statusMessage.textContent = "Error: Configura tu URL de la base de datos.";
-        }
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
         // --- Lógica de la Billetera ---
         const getProvider = () => {
@@ -105,7 +114,6 @@
         };
 
         const connectAndSign = async () => {
-            if (KV_DATABASE_URL === "PEGA_AQUI_TU_URL_DE_KVDB.IO/") return;
             provider = getProvider();
             if (!provider) { statusMessage.textContent = 'Billetera Phantom no encontrada.'; return; }
             try {
@@ -141,23 +149,21 @@
             gameScreen.classList.add('hidden');
         };
         
-        // --- Lógica de Base de Datos (API REST con Fetch) ---
+        // --- Lógica de Base de Datos (Firestore) ---
         async function loadPlayerData(userId) {
-            const url = `${KV_DATABASE_URL}${userId}`;
             try {
-                const response = await fetch(url);
-                if (response.status === 404) { // Jugador nuevo
-                    console.log("No existe el documento del jugador. Creando uno nuevo.");
+                const playerDocRef = doc(db, "players", userId);
+                const playerDoc = await getDoc(playerDocRef);
+
+                if (playerDoc.exists()) {
+                    console.log("Datos del jugador cargados desde Firestore:", playerDoc.data());
+                    return playerDoc.data();
+                } else {
+                    console.log("No existe el jugador en Firestore. Creando uno nuevo.");
                     const defaultData = { hp: 10, maxHp: 10, damage: 2, position: { x: 0, z: 0 }, score: 0 };
                     await savePlayerData(userId, defaultData);
                     return defaultData;
                 }
-                if (!response.ok) {
-                    throw new Error(`Error de red: ${response.statusText}`);
-                }
-                const data = await response.json();
-                console.log("Datos del jugador cargados:", data);
-                return data;
             } catch (error) {
                 console.error("Error al cargar datos del jugador:", error);
                 gameMessageEl.textContent = "Error al cargar datos.";
@@ -165,25 +171,20 @@
             }
         }
 
-        async function savePlayerData(userId, data) {
-            const url = `${KV_DATABASE_URL}${userId}`;
+        async function savePlayerData(userId, playerData) {
             try {
                 gameMessageEl.textContent = "Guardando...";
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                if (!response.ok) {
-                    throw new Error(`Error de red: ${response.statusText}`);
-                }
-                console.log("Datos del jugador guardados.");
+                const playerDocRef = doc(db, "players", userId);
+                await setDoc(playerDocRef, playerData, { merge: true }); // merge: true evita sobreescribir datos no incluidos
+                
+                console.log("Datos del jugador guardados en Firestore.");
                 gameMessageEl.textContent = "¡Progreso guardado en la nube!";
             } catch (error) {
                 console.error("Error al guardar datos del jugador:", error);
                 gameMessageEl.textContent = "Error al guardar.";
             }
         }
+
 
         // --- Motor 3D (Three.js) ---
         let scene, camera, renderer, playerModel, enemies = [], animationFrameId;
@@ -285,7 +286,7 @@
         }
 
         const handleLoginSuccess = async () => {
-            const userId = userPublicKey.toBase58();
+            const userId = userPublicKey.toBase8();
             const playerData = await loadPlayerData(userId);
             
             if(!playerData) {
@@ -319,3 +320,4 @@
     </script>
 </body>
 </html>
+
