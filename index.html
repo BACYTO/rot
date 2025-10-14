@@ -130,6 +130,8 @@
         let clock = new THREE.Clock();
         const keysPressed = {};
         let isPaused = false;
+        const handleKeyDown = (e) => { keysPressed[e.code] = true; };
+        const handleKeyUp = (e) => { keysPressed[e.code] = false; };
         
         // --- Configuración de Firebase ---
         const firebaseConfig = {
@@ -177,7 +179,7 @@
             }
         };
 
-        // --- Lógica de la Billetera (sin cambios) ---
+        // --- Lógica de la Billetera ---
         const getProvider = () => {
             if ('phantom' in window) {
                 const solanaProvider = window.phantom?.solana;
@@ -208,8 +210,8 @@
         };
         const logout = async () => {
             if(animationFrameId) cancelAnimationFrame(animationFrameId);
-            window.removeEventListener('keydown', (e) => keysPressed[e.code] = true);
-            window.removeEventListener('keyup', (e) => keysPressed[e.code] = false);
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
             if (renderer) {
                 renderer.dispose();
                 gameCanvasContainer.innerHTML = '';
@@ -262,7 +264,7 @@
             const d = 20;
             camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
             camera.position.set(20, 20, 20);
-            camera.lookAt(scene.position);
+            camera.lookAt(new THREE.Vector3(0,0,0)); // Initially look at origin
             scene.add(new THREE.AmbientLight(0xffffff, 0.7));
             const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
             dirLight.position.set(-30, 50, -30);
@@ -335,15 +337,6 @@
                 enemies.push({ mesh, hp: 50 * gameState.wave, maxHp: 50 * gameState.wave, damage: 5 + gameState.wave, tokenValue: 10, xpValue: 20, attackTimer: 1.5 });
                 scene.add(mesh);
             }
-
-            const chestGeo = new THREE.BoxGeometry(1, 1, 1);
-            const chestMat = new THREE.MeshStandardMaterial({ color: 0xffd700 });
-            for (let i = 0; i < numChests; i++) {
-                const chest = new THREE.Mesh(chestGeo, chestMat);
-                chest.position.set((Math.random() * 40 - 20), 0.5, (Math.random() * 40 - 20));
-                chests.push(chest);
-                scene.add(chest);
-            }
         }
 
         function xpForNextLevel() {
@@ -351,6 +344,7 @@
         }
 
         function gainXP(amount) {
+            if (gameState.hp <= 0) return;
             gameState.xp += amount;
             if (gameState.xp >= xpForNextLevel()) {
                 gameState.xp -= xpForNextLevel();
@@ -378,6 +372,8 @@
         function updatePlayer(delta) {
             if (!playerModel || gameState.hp <= 0) return;
 
+            playerAttackTimer += delta;
+            
             const moveDirection = new THREE.Vector3(0, 0, 0);
             if (keysPressed['ArrowUp'] || keysPressed['KeyW']) moveDirection.z -= 1;
             if (keysPressed['ArrowDown'] || keysPressed['KeyS']) moveDirection.z += 1;
@@ -500,7 +496,7 @@
                     projectiles.splice(i, 1);
                 }
                 enemies.forEach(e => {
-                    if (e && p && p.mesh.position.distanceTo(e.mesh.position) < 1.0) {
+                    if (e && p && p.mesh && e.mesh && p.mesh.position.distanceTo(e.mesh.position) < 1.0) {
                         e.hp -= p.damage;
                         showFloatingText(`-${p.damage}`, e.mesh.position, '#ff4d4d');
                          if (e.hp <= 0) handleEnemyDeath(e);
@@ -521,7 +517,7 @@
                     ef.mesh.material.opacity = 1.0 - progress;
 
                     enemies.forEach(e => {
-                        if (!e.hitBy || !e.hitBy.includes(ef)) {
+                        if (e && ef && ef.mesh && (!e.hitBy || !e.hitBy.includes(ef))) {
                             const dist = e.mesh.position.distanceTo(ef.mesh.position);
                             const currentRadius = ef.mesh.scale.x * 0.5;
                             if (dist < currentRadius && dist > currentRadius - 1) {
@@ -590,7 +586,7 @@
                 const power = POWERS[powerId];
                 const level = gameState.powers[powerId].level;
                 const el = document.createElement('div');
-                el.className = 'text-center bg-gray-800 p-1 rounded relative overflow-hidden';
+                el.className = 'text-center bg-gray-800 p-1 rounded relative overflow-hidden w-16';
                 el.innerHTML = `<span class="text-xs font-bold">${power.name.substring(0,4)}</span><br/><span class="text-lg font-black">L${level}</span>`;
                 if (power.type === 'active') {
                     const cooldownDiv = document.createElement('div');
@@ -653,20 +649,25 @@
                     text.sprite.material.opacity = 1.0 - (elapsed / text.duration);
                 }
             });
+            
+            if (playerModel) {
+                const targetCameraPosition = new THREE.Vector3(playerModel.position.x + 20, 20, playerModel.position.z + 20);
+                camera.position.copy(targetCameraPosition);
+                
+                if (shakeDuration > 0) {
+                    camera.position.x += (Math.random() - 0.5) * shakeIntensity;
+                    camera.position.z += (Math.random() - 0.5) * shakeIntensity;
+                    shakeDuration -= delta;
+                }
 
-            if (shakeDuration > 0) {
-                camera.position.x += (Math.random() - 0.5) * shakeIntensity;
-                camera.position.z += (Math.random() - 0.5) * shakeIntensity;
-                shakeDuration -= delta;
-            } else {
-                camera.lookAt(scene.position);
+                camera.lookAt(playerModel.position);
             }
 
             for (const powerId in gameState.powers) {
                  const power = POWERS[powerId];
                  if(power.type === 'active') {
                     const el = document.getElementById(`cooldown-${powerId}`);
-                    if(el) el.style.width = `${ (power.timer / power.cooldown) * 100 }%`;
+                    if(el) el.style.width = `${100 - (power.timer / power.cooldown) * 100 }%`;
                  }
             }
             
@@ -697,17 +698,18 @@
             startNextWave();
             animate();
             
-            // Aplicar efectos pasivos después de que el gameState esté completo
-            for (const powerId in gameState.powers) {
-                const power = POWERS[powerId];
-                if(power.type === 'passive' && power.onAcquire) {
-                    // This is tricky, passive stats should be calculated once at start
-                }
+            // Recalculate stats based on passive powers on load
+            let initialMaxHp = 100;
+            if(gameState.powers.max_hp_up) {
+                initialMaxHp += 20 * gameState.powers.max_hp_up.level;
             }
+            gameState.maxHp = initialMaxHp;
+            if (gameState.hp > gameState.maxHp) gameState.hp = gameState.maxHp;
+
             updateUI();
             
-            window.addEventListener('keydown', (e) => keysPressed[e.code] = true);
-            window.addEventListener('keyup', (e) => keysPressed[e.code] = false);
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
         };
 
         // --- Event Listeners ---
