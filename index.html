@@ -89,6 +89,7 @@
         let provider = null;
         let userPublicKey = null;
         let gameState = {};
+        let isPlayerTurn = true;
         
         // --- Configuración de Firebase ---
         const firebaseConfig = {
@@ -139,6 +140,7 @@
 
         const logout = async () => {
             if(animationFrameId) cancelAnimationFrame(animationFrameId);
+            window.removeEventListener('keydown', handlePlayerTurn);
             if (renderer) {
                 renderer.dispose();
                 gameCanvasContainer.innerHTML = '';
@@ -175,7 +177,7 @@
             try {
                 gameMessageEl.textContent = "Guardando...";
                 const playerDocRef = doc(db, "players", userId);
-                await setDoc(playerDocRef, playerData, { merge: true }); // merge: true evita sobreescribir datos no incluidos
+                await setDoc(playerDocRef, playerData, { merge: true });
                 
                 console.log("Datos del jugador guardados en Firestore.");
                 gameMessageEl.textContent = "¡Progreso guardado en la nube!";
@@ -186,7 +188,7 @@
         }
 
 
-        // --- Motor 3D (Three.js) ---
+        // --- Motor 3D y Lógica del Juego ---
         let scene, camera, renderer, playerModel, enemies = [], animationFrameId;
         const TILE_SIZE = 2;
 
@@ -208,7 +210,7 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            gameCanvasContainer.innerHTML = ''; // Limpiar por si acaso
+            gameCanvasContainer.innerHTML = '';
             gameCanvasContainer.appendChild(renderer.domElement);
             window.addEventListener('resize', onWindowResize);
         }
@@ -240,7 +242,7 @@
                 const wall2 = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
                 wall2.position.set(i * TILE_SIZE, TILE_SIZE / 2, 12 * TILE_SIZE);
                 scene.add(wall2);
-                 if (i !== 0) { // Deja un hueco para entrar/salir
+                 if (i !== 0) {
                     const wall3 = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
                     wall3.position.set(-12 * TILE_SIZE, TILE_SIZE/2, i * TILE_SIZE);
                     scene.add(wall3);
@@ -270,14 +272,97 @@
         }
 
         function createEnemies() {
-             const enemyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
-             const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff4d4d });
-             for (let i = 0; i < 5; i++) {
-                const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
-                enemy.position.set((Math.random() - 0.5) * 20, 0.75, (Math.random() - 0.5) * 20);
+            enemies = [];
+            const enemyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
+            const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff4d4d });
+            for (let i = 0; i < 5; i++) {
+                const mesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
+                let posOk = false;
+                while (!posOk) {
+                    const x = Math.floor((Math.random() - 0.5) * 10) * TILE_SIZE;
+                    const z = Math.floor((Math.random() - 0.5) * 10) * TILE_SIZE;
+                    mesh.position.set(x, 0.75, z);
+                    const playerConflict = playerModel && mesh.position.equals(playerModel.position);
+                    const enemyConflict = enemies.some(e => e.mesh.position.equals(mesh.position));
+                    if (!playerConflict && !enemyConflict && (x !== 0 || z !== 0)) {
+                        posOk = true;
+                    }
+                }
+                const enemy = { mesh, hp: 5, maxHp: 5, damage: 1 };
                 enemies.push(enemy);
-                scene.add(enemy);
-             }
+                scene.add(mesh);
+            }
+        }
+
+        function handlePlayerTurn(event) {
+            if (!playerModel || !isPlayerTurn || gameState.hp <= 0) return;
+        
+            let moved = false;
+            const targetPosition = playerModel.position.clone();
+        
+            switch (event.key) {
+                case 'ArrowUp': targetPosition.z -= TILE_SIZE; moved = true; break;
+                case 'ArrowDown': targetPosition.z += TILE_SIZE; moved = true; break;
+                case 'ArrowLeft': targetPosition.x -= TILE_SIZE; moved = true; break;
+                case 'ArrowRight': targetPosition.x += TILE_SIZE; moved = true; break;
+            }
+        
+            if (moved) {
+                isPlayerTurn = false;
+                let attackedEnemy = enemies.find(e => e.mesh.position.x === targetPosition.x && e.mesh.position.z === targetPosition.z);
+        
+                if (attackedEnemy) {
+                    attackedEnemy.hp -= gameState.damage;
+                    gameMessageEl.textContent = `Atacas al enemigo! HP restante: ${attackedEnemy.hp}`;
+                    if (attackedEnemy.hp <= 0) {
+                        scene.remove(attackedEnemy.mesh);
+                        enemies = enemies.filter(e => e !== attackedEnemy);
+                        gameMessageEl.textContent = '¡Enemigo derrotado!';
+                    }
+                } else {
+                    playerModel.position.copy(targetPosition);
+                    gameMessageEl.textContent = 'Te mueves...';
+                }
+                setTimeout(handleEnemyTurns, 200);
+            }
+        }
+
+        function handleEnemyTurns() {
+            if (gameState.hp <= 0) return;
+        
+            enemies.forEach(enemy => {
+                const enemyPos = enemy.mesh.position;
+                const playerPos = playerModel.position;
+        
+                const dx = playerPos.x - enemyPos.x;
+                const dz = playerPos.z - enemyPos.z;
+        
+                const targetPos = enemyPos.clone();
+        
+                if (Math.abs(dx) > Math.abs(dz)) {
+                    targetPos.x += Math.sign(dx) * TILE_SIZE;
+                } else {
+                    targetPos.z += Math.sign(dz) * TILE_SIZE;
+                }
+        
+                if (targetPos.x === playerPos.x && targetPos.z === playerPos.z) {
+                    gameState.hp -= enemy.damage;
+                    playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
+                    gameMessageEl.textContent = `¡Te ataca un enemigo!`;
+                    if (gameState.hp <= 0) {
+                        gameMessageEl.textContent = "¡Has sido derrotado! Fin del juego.";
+                        playerHpEl.textContent = `HP: 0/${gameState.maxHp}`;
+                        return;
+                    }
+                } else {
+                    const isBlocked = enemies.some(e => e.mesh.position.equals(targetPos));
+                    if (!isBlocked) {
+                        enemy.mesh.position.copy(targetPos);
+                    }
+                }
+            });
+        
+            isPlayerTurn = true;
         }
 
         function animate() {
@@ -306,6 +391,7 @@
             loadPlayerModel(gameState);
             createEnemies();
             animate();
+            window.addEventListener('keydown', handlePlayerTurn);
         };
 
         // --- Event Listeners ---
@@ -313,7 +399,6 @@
         logoutButton.addEventListener('click', logout);
         saveButton.addEventListener('click', () => {
             if (!userPublicKey || !playerModel) return;
-            // Actualizamos la posición en el estado del juego antes de guardar
             gameState.position = { x: playerModel.position.x / TILE_SIZE, z: playerModel.position.z / TILE_SIZE };
             savePlayerData(userPublicKey.toBase58(), gameState);
         });
