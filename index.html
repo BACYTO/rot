@@ -3,117 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Juego Roguelike con Login de Phantom</title>
-    <!-- Tailwind CSS para un diseño rápido y moderno -->
+    <title>Juego Roguelike 3D con API REST</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Biblioteca tweetnacl para la verificación de firmas (simulación en el cliente) -->
+    <!-- tweetnacl para verificación de firmas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+    
+    <!-- Three.js y GLTF Loader para 3D -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
     <style>
-        /* Estilos personalizados y animaciones */
-        body {
-            font-family: 'Inter', sans-serif;
-            overflow: hidden;
-        }
+        body { font-family: 'Inter', sans-serif; overflow: hidden; }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
-        
-        .card {
-            background-color: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .btn-phantom {
-            background: linear-gradient(90deg, #583cff, #a45cff);
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(117, 73, 255, 0.3);
-        }
-        .btn-phantom:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(117, 73, 255, 0.5);
-        }
-
-        /* Estilos para el canvas del juego */
-        #game-canvas {
-            background-color: #000;
-            border: 2px solid #583cff;
-            border-radius: 8px;
-            box-shadow: 0 0 20px rgba(88, 60, 255, 0.5);
-        }
+        .card { background-color: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .btn-phantom { background: linear-gradient(90deg, #583cff, #a45cff); transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(117, 73, 255, 0.3); }
+        .btn-phantom:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(117, 73, 255, 0.5); }
+        #game-canvas-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
+        canvas { display: block; }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
 
     <!-- Contenedor Principal -->
-    <div class="container mx-auto p-4 text-center w-full max-w-2xl">
+    <div class="container mx-auto p-4 text-center w-full max-w-2xl z-10">
 
-        <!-- Pantalla de Login (Inicialmente Visible) -->
+        <!-- Pantalla de Login -->
         <div id="login-screen" class="space-y-6 card p-8 rounded-2xl max-w-md mx-auto">
             <div class="flex justify-center">
-                <!-- SVG del logo de Phantom -->
+                <!-- SVG logo Phantom -->
                 <svg width="80" height="80" viewBox="0 0 101 101" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M50.5 101C78.39 101 101 78.39 101 50.5C101 22.61 78.39 0 50.5 0C22.61 0 0 22.61 0 50.5C0 78.39 22.61 101 50.5 101Z" fill="#201F25"></path><path d="M50.5 86.848C69.19 86.848 84.444 71.594 84.444 52.904C84.444 34.214 69.19 18.96 50.5 18.96C31.81 18.96 16.556 34.214 16.556 52.904C16.556 71.594 31.81 86.848 50.5 86.848Z" fill="url(#paint0_linear_14_254)"></path><path d="M50.5002 89.208C30.4182 89.208 14.1942 72.984 14.1942 52.902C14.1942 32.82 30.4182 16.596 50.5002 16.596C70.5822 16.596 86.8062 32.82 86.8062 52.902C86.8062 72.984 70.5822 89.208 50.5002 89.208ZM50.5002 18.956C31.8102 18.956 16.5562 34.21 16.5562 52.9C16.5562 71.59 31.8102 86.844 50.5002 86.844C69.1902 86.844 84.4442 71.59 84.4442 52.9C84.4442 34.21 69.1902 18.956 50.5002 18.956Z" fill="#A55CFD"></path><path d="M50.5 68.618C59.348 68.618 66.52 61.446 66.52 52.598C66.52 43.75 59.348 36.578 50.5 36.578C41.652 36.578 34.48 43.75 34.48 52.598C34.48 61.446 41.652 68.618 50.5 68.618Z" fill="white"></path><defs><linearGradient id="paint0_linear_14_254" x1="50.5" y1="18.96" x2="50.5" y2="86.848" gradientUnits="userSpaceOnUse"><stop stop-color="#A55CFD"></stop><stop offset="1" stop-color="#583CFF"></stop></linearGradient></defs></svg>
             </div>
-            <h1 class="text-3xl font-bold">Phantom Roguelike</h1>
-            <p id="status-message" class="text-gray-400 h-6">Conecta tu billetera para explorar la mazmorra.</p>
+            <h1 class="text-3xl font-bold">Phantom Roguelike 3D</h1>
+            <p id="status-message" class="text-gray-400 h-6">Conecta tu billetera para explorar la mazmorra11.</p>
             <button id="connect-wallet-btn" class="w-full btn-phantom text-white font-bold py-3 px-4 rounded-xl text-lg">
                 Conectar con Phantom
             </button>
         </div>
 
-        <!-- Pantalla de Juego (Inicialmente Oculta) -->
-        <div id="game-screen" class="hidden w-full h-screen fixed top-0 left-0 flex flex-col items-center justify-center p-4">
-             <!-- Header del juego -->
-            <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center bg-gray-900/50 backdrop-blur-sm z-10">
-                <div>
+        <!-- Pantalla de Juego -->
+        <div id="game-screen" class="hidden">
+            <div id="game-canvas-container"></div>
+             <!-- UI superpuesta al juego -->
+            <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center bg-transparent z-10">
+                 <div>
                     <p class="text-sm text-gray-400">Jugador:</p>
                     <p id="user-pubkey" class="font-mono text-xs md:text-sm truncate max-w-[200px] md:max-w-xs"></p>
                 </div>
-                <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                    Desconectar
-                </button>
+                <div class="flex items-center space-x-2">
+                    <button id="save-game-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Guardar Progreso</button>
+                    <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Desconectar</button>
+                </div>
             </div>
-            
-            <!-- UI del juego -->
-            <div id="game-ui" class="w-full max-w-xl text-center mb-4">
-                <p class="font-bold text-2xl" id="player-hp">HP: 10/10</p>
-                <p class="text-lg text-gray-400" id="game-message">Usa las flechas para moverte. ¡Encuentra la salida `>`!</p>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 card p-4 rounded-xl text-center">
+                 <p class="font-bold text-2xl" id="player-hp">HP: 10/10</p>
+                 <p class="text-lg text-gray-400" id="game-message">Usa las flechas para moverte.</p>
             </div>
-            
-            <!-- Canvas del juego -->
-            <canvas id="game-canvas"></canvas>
         </div>
     </div>
 
-    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        // --- Elementos del DOM ---
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        
+        // --- Elementos del DOM y Estado Global ---
         const connectButton = document.getElementById('connect-wallet-btn');
         const logoutButton = document.getElementById('logout-btn');
+        const saveButton = document.getElementById('save-game-btn');
         const loginScreen = document.getElementById('login-screen');
         const gameScreen = document.getElementById('game-screen');
         const userPubKeyEl = document.getElementById('user-pubkey');
         const statusMessage = document.getElementById('status-message');
-        const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d');
         const playerHpEl = document.getElementById('player-hp');
         const gameMessageEl = document.getElementById('game-message');
+        const gameCanvasContainer = document.getElementById('game-canvas-container');
 
-        // --- Estado de la Billetera ---
         let provider = null;
         let userPublicKey = null;
+        let gameState = {};
+        
+        // --- Configuración de la API de Base de Datos ---
+        // IMPORTANTE: Ve a https://kvdb.io/, crea un bucket y pega la URL aquí.
+        // Debe terminar en una barra inclinada '/', por ejemplo: https://kvdb.io/AbCd1234EfGh5678/
+        const KV_DATABASE_URL = "https://kvdb.io/45r7KwPnLPUKVFqtPuRAXU/";
 
-        // --- Constantes del Juego ---
-        const TILE_SIZE = 24;
-        const MAP_COLS = 25;
-        const MAP_ROWS = 17;
+        if (KV_DATABASE_URL === "PEGA_AQUI_TU_URL_DE_KVDB.IO/") {
+            statusMessage.textContent = "Error: Configura tu URL de la base de datos.";
+        }
 
-        // --- Estado del Juego ---
-        let map = [];
-        let player = {};
-        let enemies = [];
-        let stairs = {};
-        let gameState = 'playing'; // 'playing', 'win', 'gameOver'
-
-        // --- Lógica de la Billetera (Sin cambios) ---
+        // --- Lógica de la Billetera ---
         const getProvider = () => {
             if ('phantom' in window) {
                 const solanaProvider = window.phantom?.solana;
@@ -121,260 +105,218 @@
             }
             return null;
         };
-        
+
         const connectAndSign = async () => {
+            if (KV_DATABASE_URL === "PEGA_AQUI_TU_URL_DE_KVDB.IO/") return;
             provider = getProvider();
-            if (!provider) {
-                statusMessage.textContent = 'Billetera Phantom no encontrada.';
-                statusMessage.classList.add('text-red-400');
-                return;
-            }
+            if (!provider) { statusMessage.textContent = 'Billetera Phantom no encontrada.'; return; }
             try {
                 statusMessage.textContent = 'Conectando billetera...';
                 const resp = await provider.connect();
                 userPublicKey = resp.publicKey;
-                statusMessage.textContent = 'Por favor, firma el mensaje para iniciar sesión.';
-                const messageText = `Firma este mensaje para probar tu identidad y jugar.\nNonce: ${Date.now()}`;
+                
+                statusMessage.textContent = 'Firma el mensaje para iniciar sesión.';
+                const messageText = `Firma este mensaje para jugar.\nNonce: ${Date.now()}`;
                 const encodedMessage = new TextEncoder().encode(messageText);
                 const { signature } = await provider.signMessage(encodedMessage, 'utf8');
                 const isVerified = nacl.sign.detached.verify(encodedMessage, signature, userPublicKey.toBytes());
+
                 if (isVerified) {
-                    statusMessage.textContent = '¡Firma verificada! Iniciando...';
-                    handleLoginSuccess();
-                } else {
-                    throw new Error('La verificación de la firma falló.');
-                }
+                    statusMessage.textContent = '¡Firma verificada! Cargando datos...';
+                    await handleLoginSuccess();
+                } else { throw new Error('La verificación de la firma falló.'); }
             } catch (err) {
-                console.error('Error durante el inicio de sesión:', err);
                 statusMessage.textContent = `Error: ${err.message || 'El usuario rechazó la solicitud.'}`;
-                statusMessage.classList.add('text-red-400');
                 if (provider?.isConnected) await provider.disconnect();
             }
         };
 
         const logout = async () => {
-            if (!provider) return;
-            try {
-                await provider.disconnect();
-                userPublicKey = null;
-                provider = null;
-                showLoginScreen();
-            } catch (err) {
-                console.error('Error al desconectar:', err);
+            if(animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (renderer) {
+                renderer.dispose();
+                gameCanvasContainer.innerHTML = '';
             }
+            if (provider) await provider.disconnect();
+            userPublicKey = null; provider = null;
+            loginScreen.classList.remove('hidden');
+            gameScreen.classList.add('hidden');
         };
         
-        // --- Lógica de la UI ---
-        const handleLoginSuccess = () => {
+        // --- Lógica de Base de Datos (API REST con Fetch) ---
+        async function loadPlayerData(userId) {
+            const url = `${KV_DATABASE_URL}${userId}`;
+            try {
+                const response = await fetch(url);
+                if (response.status === 404) { // Jugador nuevo
+                    console.log("No existe el documento del jugador. Creando uno nuevo.");
+                    const defaultData = { hp: 10, maxHp: 10, damage: 2, position: { x: 0, z: 0 }, score: 0 };
+                    await savePlayerData(userId, defaultData);
+                    return defaultData;
+                }
+                if (!response.ok) {
+                    throw new Error(`Error de red: ${response.statusText}`);
+                }
+                const data = await response.json();
+                console.log("Datos del jugador cargados:", data);
+                return data;
+            } catch (error) {
+                console.error("Error al cargar datos del jugador:", error);
+                gameMessageEl.textContent = "Error al cargar datos.";
+                return null;
+            }
+        }
+
+        async function savePlayerData(userId, data) {
+            const url = `${KV_DATABASE_URL}${userId}`;
+            try {
+                gameMessageEl.textContent = "Guardando...";
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (!response.ok) {
+                    throw new Error(`Error de red: ${response.statusText}`);
+                }
+                console.log("Datos del jugador guardados.");
+                gameMessageEl.textContent = "¡Progreso guardado en la nube!";
+            } catch (error) {
+                console.error("Error al guardar datos del jugador:", error);
+                gameMessageEl.textContent = "Error al guardar.";
+            }
+        }
+
+        // --- Motor 3D (Three.js) ---
+        let scene, camera, renderer, playerModel, enemies = [], animationFrameId;
+        const TILE_SIZE = 2;
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
+
+            const aspect = window.innerWidth / window.innerHeight;
+            const d = 20;
+            camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
+            camera.position.set(20, 20, 20);
+            camera.lookAt(scene.position);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(-30, 50, -30);
+            scene.add(dirLight);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            gameCanvasContainer.innerHTML = ''; // Limpiar por si acaso
+            gameCanvasContainer.appendChild(renderer.domElement);
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            const d = 20;
+            camera.left = -d * aspect;
+            camera.right = d * aspect;
+            camera.top = d;
+            camera.bottom = -d;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function generateMap3D() {
+            const floorGeometry = new THREE.PlaneGeometry(50, 50);
+            const floorMaterial = new THREE.MeshLambertMaterial({ color: 0x4a5568 });
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+
+            const wallGeometry = new THREE.BoxGeometry(TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            const wallMaterial = new THREE.MeshLambertMaterial({ color: 0x2d3748 });
+             for(let i = -12; i <= 12; i++) {
+                const wall1 = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
+                wall1.position.set(i * TILE_SIZE, TILE_SIZE / 2, -12 * TILE_SIZE);
+                scene.add(wall1);
+                const wall2 = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
+                wall2.position.set(i * TILE_SIZE, TILE_SIZE / 2, 12 * TILE_SIZE);
+                scene.add(wall2);
+                 if (i !== 0) { // Deja un hueco para entrar/salir
+                    const wall3 = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
+                    wall3.position.set(-12 * TILE_SIZE, TILE_SIZE/2, i * TILE_SIZE);
+                    scene.add(wall3);
+                    const wall4 = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
+                    wall4.position.set(12 * TILE_SIZE, TILE_SIZE/2, i * TILE_SIZE);
+                    scene.add(wall4);
+                 }
+            }
+        }
+        
+        function loadPlayerModel(playerData) {
+            const loader = new GLTFLoader();
+            loader.load('tralalero_tralala_brainrot.glb', (gltf) => {
+                playerModel = gltf.scene;
+                playerModel.scale.set(0.5, 0.5, 0.5);
+                playerModel.position.set(playerData.position.x * TILE_SIZE, 0, playerData.position.z * TILE_SIZE);
+                scene.add(playerModel);
+            }, undefined, (error) => {
+                console.error("Error cargando el modelo del jugador, usando un cubo como fallback:", error);
+                const geometry = new THREE.BoxGeometry(1, 1.5, 1);
+                const material = new THREE.MeshStandardMaterial({ color: 0x583cff });
+                playerModel = new THREE.Mesh(geometry, material);
+                playerModel.position.set(playerData.position.x * TILE_SIZE, 0.75, playerData.position.z * TILE_SIZE);
+                scene.add(playerModel);
+            });
+        }
+
+        function createEnemies() {
+             const enemyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
+             const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff4d4d });
+             for (let i = 0; i < 5; i++) {
+                const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+                enemy.position.set((Math.random() - 0.5) * 20, 0.75, (Math.random() - 0.5) * 20);
+                enemies.push(enemy);
+                scene.add(enemy);
+             }
+        }
+
+        function animate() {
+            animationFrameId = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        const handleLoginSuccess = async () => {
+            const userId = userPublicKey.toBase58();
+            const playerData = await loadPlayerData(userId);
+            
+            if(!playerData) {
+                statusMessage.textContent = "No se pudieron cargar los datos del jugador.";
+                return;
+            }
+            
+            gameState = playerData;
+            
             loginScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
-            userPubKeyEl.textContent = userPublicKey.toBase58();
-            startGame();
+            userPubKeyEl.textContent = userId;
+            playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
+            
+            init3D();
+            generateMap3D();
+            loadPlayerModel(gameState);
+            createEnemies();
+            animate();
         };
 
-        const showLoginScreen = () => {
-            gameScreen.classList.add('hidden');
-            loginScreen.classList.remove('hidden');
-            statusMessage.textContent = 'Conecta tu billetera para explorar la mazmorra.';
-            statusMessage.classList.remove('text-red-400');
-            resetGame();
-        };
-
-        // --- Lógica del Juego ---
-        
-        function generateMap() {
-            // Genera un mapa simple con un borde de muros
-            let newMap = [];
-            for (let y = 0; y < MAP_ROWS; y++) {
-                let row = [];
-                for (let x = 0; x < MAP_COLS; x++) {
-                    if (y === 0 || y === MAP_ROWS - 1 || x === 0 || x === MAP_COLS - 1) {
-                        row.push('#'); // Muro
-                    } else {
-                        row.push('.'); // Suelo
-                    }
-                }
-                newMap.push(row);
-            }
-            // Añadir algunos muros internos aleatorios
-            for (let i = 0; i < 40; i++) {
-                const x = Math.floor(Math.random() * (MAP_COLS - 2)) + 1;
-                const y = Math.floor(Math.random() * (MAP_ROWS - 2)) + 1;
-                newMap[y][x] = '#';
-            }
-            return newMap;
-        }
-
-        function findEmptyTile() {
-            let x, y;
-            do {
-                x = Math.floor(Math.random() * MAP_COLS);
-                y = Math.floor(Math.random() * MAP_ROWS);
-            } while (map[y][x] !== '.');
-            return { x, y };
-        }
-
-        const startGame = () => {
-            canvas.width = MAP_COLS * TILE_SIZE;
-            canvas.height = MAP_ROWS * TILE_SIZE;
-            
-            map = generateMap();
-            
-            const playerPos = findEmptyTile();
-            player = { x: playerPos.x, y: playerPos.y, hp: 10, maxHp: 10, damage: 2, char: '@', color: '#583cff' };
-            map[player.y][player.x] = '.'; // Asegurarse de que la casilla del jugador no sea un muro
-
-            enemies = [];
-            for (let i = 0; i < 5; i++) {
-                const enemyPos = findEmptyTile();
-                enemies.push({ x: enemyPos.x, y: enemyPos.y, hp: 3, damage: 1, char: 'G', color: '#ff4d4d' });
-            }
-
-            const stairsPos = findEmptyTile();
-            stairs = { x: stairsPos.x, y: stairsPos.y, char: '>', color: '#ffd700' };
-
-            gameState = 'playing';
-            gameMessageEl.textContent = 'Usa las flechas para moverte. ¡Encuentra la salida `>`!';
-            
-            window.addEventListener('keydown', handleInput);
-            draw();
-        };
-
-        const resetGame = () => {
-             window.removeEventListener('keydown', handleInput);
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.font = `${TILE_SIZE * 0.8}px monospace`;
-
-            // Dibujar mapa
-            for (let y = 0; y < MAP_ROWS; y++) {
-                for (let x = 0; x < MAP_COLS; x++) {
-                    if (map[y][x] === '#') {
-                        ctx.fillStyle = '#4a5568';
-                        ctx.fillText('#', x * TILE_SIZE, y * TILE_SIZE + TILE_SIZE);
-                    } else {
-                        ctx.fillStyle = '#2d3748';
-                         ctx.fillText('.', x * TILE_SIZE, y * TILE_SIZE + TILE_SIZE);
-                    }
-                }
-            }
-
-            // Dibujar escalera
-            ctx.fillStyle = stairs.color;
-            ctx.fillText(stairs.char, stairs.x * TILE_SIZE, stairs.y * TILE_SIZE + TILE_SIZE);
-
-            // Dibujar enemigos
-            enemies.forEach(e => {
-                ctx.fillStyle = e.color;
-                ctx.fillText(e.char, e.x * TILE_SIZE, e.y * TILE_SIZE + TILE_SIZE);
-            });
-
-            // Dibujar jugador
-            ctx.fillStyle = player.color;
-            ctx.fillText(player.char, player.x * TILE_SIZE, player.y * TILE_SIZE + TILE_SIZE);
-            
-            // Actualizar UI
-            playerHpEl.textContent = `HP: ${player.hp}/${player.maxHp}`;
-            
-            // Mensajes de fin de juego
-            if (gameState === 'gameOver') {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = 'white';
-                ctx.font = '32px Inter';
-                ctx.textAlign = 'center';
-                ctx.fillText('HAS MUERTO', canvas.width / 2, canvas.height / 2);
-                gameMessageEl.textContent = '¡Juego terminado! Desconecta y vuelve a conectar para intentarlo de nuevo.';
-            } else if (gameState === 'win') {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#ffd700';
-                ctx.font = '32px Inter';
-                ctx.textAlign = 'center';
-                ctx.fillText('¡ESCAPASTE!', canvas.width / 2, canvas.height / 2);
-                 gameMessageEl.textContent = '¡Felicidades! Has encontrado la salida.';
-            }
-        }
-
-        function handleInput(e) {
-            if (gameState !== 'playing') return;
-
-            let dx = 0, dy = 0;
-            if (e.key === 'ArrowUp') dy = -1;
-            else if (e.key === 'ArrowDown') dy = 1;
-            else if (e.key === 'ArrowLeft') dx = -1;
-            else if (e.key === 'ArrowRight') dx = 1;
-            else return;
-            
-            e.preventDefault();
-            movePlayer(dx, dy);
-        }
-
-        function movePlayer(dx, dy) {
-            const newX = player.x + dx;
-            const newY = player.y + dy;
-
-            if (map[newY][newX] === '#') return; // Choca con muro
-
-            const enemyIndex = enemies.findIndex(e => e.x === newX && e.y === newY);
-            if (enemyIndex !== -1) {
-                // Atacar enemigo
-                const enemy = enemies[enemyIndex];
-                enemy.hp -= player.damage;
-                if (enemy.hp <= 0) {
-                    enemies.splice(enemyIndex, 1);
-                }
-            } else {
-                // Mover jugador
-                player.x = newX;
-                player.y = newY;
-            }
-
-            // Comprobar condición de victoria
-            if (player.x === stairs.x && player.y === stairs.y) {
-                gameState = 'win';
-            } else {
-                 // Turno de los enemigos
-                 moveEnemies();
-            }
-
-            draw();
-        }
-
-        function moveEnemies() {
-            enemies.forEach(enemy => {
-                const dx = player.x - enemy.x;
-                const dy = player.y - enemy.y;
-                let moveX = 0, moveY = 0;
-
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    moveX = Math.sign(dx);
-                } else {
-                    moveY = Math.sign(dy);
-                }
-                
-                const newX = enemy.x + moveX;
-                const newY = enemy.y + moveY;
-
-                if (newX === player.x && newY === player.y) {
-                    player.hp -= enemy.damage;
-                    if (player.hp <= 0) {
-                        player.hp = 0;
-                        gameState = 'gameOver';
-                    }
-                } else if (map[newY][newX] !== '#' && !enemies.some(e => e.x === newX && e.y === newY)) {
-                    enemy.x = newX;
-                    enemy.y = newY;
-                }
-            });
-        }
-        
-        // Asignar eventos a los botones
+        // --- Event Listeners ---
         connectButton.addEventListener('click', connectAndSign);
         logoutButton.addEventListener('click', logout);
-    });
+        saveButton.addEventListener('click', () => {
+            if (!userPublicKey || !playerModel) return;
+            // Actualizamos la posición en el estado del juego antes de guardar
+            gameState.position = { x: playerModel.position.x / TILE_SIZE, z: playerModel.position.z / TILE_SIZE };
+            savePlayerData(userPublicKey.toBase58(), gameState);
+        });
     </script>
 </body>
 </html>
