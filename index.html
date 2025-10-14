@@ -29,9 +29,21 @@
         canvas { display: block; }
         .cooldown-bar { background-color: rgba(255, 255, 255, 0.2); width: 100px; height: 10px; border-radius: 5px; overflow: hidden; }
         .cooldown-fill { background-color: #4ade80; height: 100%; transition: width 0.1s linear; }
+        .power-card { transition: all 0.2s ease-in-out; border: 2px solid rgba(255,255,255,0.2); }
+        .power-card:hover { transform: scale(1.05); border-color: #a45cff; }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+
+    <!-- Pantalla de Selección de Poderes -->
+    <div id="powerup-screen" class="hidden absolute inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center">
+        <div class="text-center">
+            <h2 class="text-4xl font-bold mb-8">Elige una Mejora</h2>
+            <div id="powerup-choices" class="flex gap-8">
+                <!-- Las opciones de poderes se insertarán aquí -->
+            </div>
+        </div>
+    </div>
 
     <!-- Contenedor Principal -->
     <div class="container mx-auto p-4 text-center w-full max-w-2xl z-10">
@@ -53,10 +65,14 @@
         <div id="game-screen" class="hidden">
             <div id="game-canvas-container"></div>
              <!-- UI superpuesta al juego -->
-            <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center bg-transparent z-10">
+            <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-start bg-transparent z-10">
                  <div>
                     <p class="text-sm text-gray-400">Jugador:</p>
                     <p id="user-pubkey" class="font-mono text-xs md:text-sm truncate max-w-[200px] md:max-w-xs"></p>
+                </div>
+                <div id="powers-display" class="card p-2 rounded-lg flex flex-col items-center">
+                    <p class="text-sm font-bold mb-1">PODERES</p>
+                    <div id="powers-list" class="flex gap-2"></div>
                 </div>
                 <div class="flex items-center space-x-2">
                     <button id="save-game-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Guardar Progreso</button>
@@ -96,12 +112,16 @@
         const gameMessageEl = document.getElementById('game-message');
         const gameCanvasContainer = document.getElementById('game-canvas-container');
         const attackCooldownFill = document.getElementById('attack-cooldown-fill');
+        const powerupScreen = document.getElementById('powerup-screen');
+        const powerupChoices = document.getElementById('powerup-choices');
+        const powersList = document.getElementById('powers-list');
 
         let provider = null;
         let userPublicKey = null;
         let gameState = {};
         let clock = new THREE.Clock();
         const keysPressed = {};
+        let isPaused = false;
         
         // --- Configuración de Firebase ---
         const firebaseConfig = {
@@ -115,7 +135,53 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // --- Lógica de la Billetera ---
+        // --- Sistema de Poderes ---
+        const POWERS = {
+            fireball: {
+                name: 'Bola de Fuego',
+                type: 'active',
+                maxLevel: 5,
+                timer: 0,
+                getDescription: (level) => `Lanza una bola de fuego cada ${ (5 - level * 0.5).toFixed(1) }s que inflige ${10 + level * 5} de daño.`,
+                onUpdate: (delta, level) => {
+                    POWERS.fireball.timer -= delta;
+                    if (POWERS.fireball.timer <= 0) {
+                        POWERS.fireball.timer = 5 - level * 0.5;
+                        const closestEnemy = findClosestEnemy(playerModel.position);
+                        if (closestEnemy) {
+                            createProjectile('fireball', playerModel.position, closestEnemy.mesh.position, 10 + level * 5);
+                        }
+                    }
+                },
+            },
+            shockwave: {
+                name: 'Onda Expansiva',
+                type: 'active',
+                maxLevel: 5,
+                timer: 0,
+                getDescription: (level) => `Emite una onda cada ${ (8 - level).toFixed(1) }s que inflige ${5 + level * 5} de daño en área.`,
+                onUpdate: (delta, level) => {
+                    POWERS.shockwave.timer -= delta;
+                    if (POWERS.shockwave.timer <= 0) {
+                        POWERS.shockwave.timer = 8 - level;
+                        createEffect('shockwave', playerModel.position, 5 + level * 5);
+                    }
+                },
+            },
+            max_hp_up: {
+                name: 'Más Vida',
+                type: 'passive',
+                maxLevel: 10,
+                getDescription: (level) => `Aumenta tu vida máxima en ${10 * level}.`,
+                onAcquire: (level) => {
+                    gameState.maxHp += 10;
+                    gameState.hp += 10; // Curar al subir de nivel
+                    playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
+                },
+            }
+        };
+
+        // --- Lógica de la Billetera (sin cambios) ---
         const getProvider = () => {
             if ('phantom' in window) {
                 const solanaProvider = window.phantom?.solana;
@@ -123,7 +189,6 @@
             }
             return null;
         };
-
         const connectAndSign = async () => {
             provider = getProvider();
             if (!provider) { statusMessage.textContent = 'Billetera Phantom no encontrada.'; return; }
@@ -131,13 +196,11 @@
                 statusMessage.textContent = 'Conectando billetera...';
                 const resp = await provider.connect();
                 userPublicKey = resp.publicKey;
-                
                 statusMessage.textContent = 'Firma el mensaje para iniciar sesión.';
                 const messageText = `Firma este mensaje para jugar.\nNonce: ${Date.now()}`;
                 const encodedMessage = new TextEncoder().encode(messageText);
                 const { signature } = await provider.signMessage(encodedMessage, 'utf8');
                 const isVerified = nacl.sign.detached.verify(encodedMessage, signature, userPublicKey.toBytes());
-
                 if (isVerified) {
                     statusMessage.textContent = '¡Firma verificada! Cargando datos...';
                     await handleLoginSuccess();
@@ -147,7 +210,6 @@
                 if (provider?.isConnected) await provider.disconnect();
             }
         };
-
         const logout = async () => {
             if(animationFrameId) cancelAnimationFrame(animationFrameId);
             window.removeEventListener('keydown', (e) => keysPressed[e.code] = true);
@@ -167,11 +229,10 @@
             try {
                 const playerDocRef = doc(db, "players", userId);
                 const playerDoc = await getDoc(playerDocRef);
-
                 if (playerDoc.exists()) {
                     return playerDoc.data();
                 } else {
-                    const defaultData = { hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0 };
+                    const defaultData = { hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0, powers: {} };
                     await savePlayerData(userId, defaultData);
                     return defaultData;
                 }
@@ -180,25 +241,22 @@
                 return null;
             }
         }
-
         async function savePlayerData(userId, playerData) {
             try {
-                gameMessageEl.textContent = "Guardando...";
                 const playerDocRef = doc(db, "players", userId);
                 await setDoc(playerDocRef, playerData, { merge: true });
-                gameMessageEl.textContent = "¡Progreso guardado en la nube!";
             } catch (error) {
                 console.error("Error al guardar datos del jugador:", error);
             }
         }
 
         // --- Motor 3D y Lógica del Juego ---
-        let scene, camera, renderer, playerModel, enemies = [], animationFrameId, exitPortal;
-        let floatingTexts = [];
+        let scene, camera, renderer, playerModel, enemies = [], animationFrameId;
+        let floatingTexts = [], projectiles = [], effects = [], chests = [];
         let shakeDuration = 0, shakeIntensity = 0.25;
         const PLAYER_SPEED = 5.0;
         const ENEMY_SPEED = 2.5;
-        const ATTACK_COOLDOWN = 1.0; // seconds
+        const ATTACK_COOLDOWN = 1.0;
         let playerAttackTimer = ATTACK_COOLDOWN;
 
         function init3D() {
@@ -263,17 +321,28 @@
             });
         }
 
-        function createEnemies() {
+        function createEnemiesAndChests() {
             enemies.forEach(e => scene.remove(e.mesh));
             enemies = [];
+            chests.forEach(c => scene.remove(c));
+            chests = [];
+
             const enemyGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
             const enemyMat = new THREE.MeshStandardMaterial({ color: 0xff4d4d });
             for (let i = 0; i < 5; i++) {
                 const mesh = new THREE.Mesh(enemyGeo, enemyMat);
-                mesh.position.set((Math.random() * 20 - 10), 0.75, (Math.random() * 20 - 10));
-                const enemy = { mesh, hp: 50, maxHp: 50, damage: 5, tokenValue: 10, attackTimer: 1.5 };
-                enemies.push(enemy);
+                mesh.position.set((Math.random() * 40 - 20), 0.75, (Math.random() * 40 - 20));
+                enemies.push({ mesh, hp: 50, maxHp: 50, damage: 5, tokenValue: 10, attackTimer: 1.5 });
                 scene.add(mesh);
+            }
+
+            const chestGeo = new THREE.BoxGeometry(1, 1, 1);
+            const chestMat = new THREE.MeshStandardMaterial({ color: 0xffd700 });
+            for (let i = 0; i < 2; i++) {
+                const chest = new THREE.Mesh(chestGeo, chestMat);
+                chest.position.set((Math.random() * 40 - 20), 0.5, (Math.random() * 40 - 20));
+                chests.push(chest);
+                scene.add(chest);
             }
         }
         
@@ -296,9 +365,6 @@
             
             if (keysPressed['Space'] && playerAttackTimer >= ATTACK_COOLDOWN) {
                 playerAttackTimer = 0;
-                const attackDirection = moveDirection.lengthSq() > 0 ? moveDirection : new THREE.Vector3(0,0,-1);
-                animateAttack(playerModel, attackDirection, 1, 150);
-                
                 enemies.forEach(enemy => {
                     if (playerModel.position.distanceTo(enemy.mesh.position) < 2.0) {
                         enemy.hp -= gameState.damage;
@@ -306,13 +372,22 @@
                         if (enemy.hp <= 0) {
                             gameState.tokens += enemy.tokenValue;
                             playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
-                            showFloatingText(`+${enemy.tokenValue}T`, enemy.mesh.position, '#ffd700');
                             scene.remove(enemy.mesh);
                             enemies = enemies.filter(e => e !== enemy);
                         }
                     }
                 });
             }
+
+            // Chest collision
+            chests.forEach((chest, index) => {
+                if (playerModel.position.distanceTo(chest.position) < 1.5) {
+                    scene.remove(chest);
+                    chests.splice(index, 1);
+                    isPaused = true;
+                    showPowerUpSelection();
+                }
+            });
         }
         
         function updateEnemies(delta) {
@@ -328,27 +403,171 @@
                     enemy.attackTimer = 0;
                     gameState.hp -= enemy.damage;
                     playerHpEl.textContent = `HP: ${Math.max(0, gameState.hp)}/${gameState.maxHp}`;
-                    showFloatingText(`-${enemy.damage}`, playerModel.position, '#ff4d4d');
+                    showFloatingText(`-${enemy.damage}`, playerModel.position, '#ffffff');
                     shakeCamera(0.3, 0.25);
-                     if (gameState.hp <= 0) {
-                        gameMessageEl.textContent = "¡Has sido derrotado!";
-                    }
+                     if (gameState.hp <= 0) gameMessageEl.textContent = "¡Has sido derrotado!";
                 }
              });
         }
-        
-        function animateAttack(model, direction, distance = 1, duration = 100) {
-            const startPos = model.position.clone();
-            const startTime = performance.now();
-            function lunge() {
-                const elapsed = performance.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                const backAndForth = Math.sin(progress * Math.PI);
-                model.position.copy(startPos).addScaledVector(direction, backAndForth * distance);
-                if (progress < 1) requestAnimationFrame(lunge);
-                else model.position.copy(startPos);
+
+        // --- Funciones de Poderes y Efectos ---
+        function findClosestEnemy(position) {
+            let closest = null;
+            let minDistance = Infinity;
+            enemies.forEach(enemy => {
+                const distance = position.distanceTo(enemy.mesh.position);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closest = enemy;
+                }
+            });
+            return closest;
+        }
+
+        function createProjectile(type, startPos, targetPos, damage) {
+            const geo = new THREE.SphereGeometry(0.3, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffa500 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(startPos);
+            const direction = targetPos.clone().sub(startPos).normalize();
+            projectiles.push({ mesh, direction, speed: 10, damage });
+            scene.add(mesh);
+        }
+
+        function createEffect(type, position, damage) {
+            if (type === 'shockwave') {
+                const geo = new THREE.RingGeometry(0.1, 0.5, 32);
+                const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, transparent: true });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(position);
+                mesh.rotation.x = -Math.PI / 2;
+                effects.push({ mesh, damage, type, startTime: performance.now(), duration: 1000 });
+                scene.add(mesh);
             }
-            lunge();
+        }
+
+        function updatePowers(delta) {
+            for (const powerId in gameState.powers) {
+                const powerData = POWERS[powerId];
+                if (powerData.type === 'active') {
+                    powerData.onUpdate(delta, gameState.powers[powerId].level);
+                }
+            }
+        }
+
+        function updateProjectilesAndEffects(delta) {
+            projectiles.forEach((p, i) => {
+                p.mesh.position.addScaledVector(p.direction, p.speed * delta);
+                if (p.mesh.position.distanceTo(playerModel.position) > 50) {
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+                enemies.forEach(e => {
+                    if (p.mesh.position.distanceTo(e.mesh.position) < 1.0) {
+                        e.hp -= p.damage;
+                        showFloatingText(`-${p.damage}`, e.mesh.position, '#ff4d4d');
+                         if (e.hp <= 0) {
+                            gameState.tokens += e.tokenValue;
+                            playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
+                            scene.remove(e.mesh);
+                            enemies = enemies.filter(en => en !== e);
+                        }
+                        scene.remove(p.mesh);
+                        projectiles.splice(i, 1);
+                    }
+                });
+            });
+
+            effects.forEach((ef, i) => {
+                const elapsed = performance.now() - ef.startTime;
+                if (elapsed > ef.duration) {
+                    scene.remove(ef.mesh);
+                    effects.splice(i, 1);
+                } else {
+                    const progress = elapsed / ef.duration;
+                    ef.mesh.scale.set(1 + progress * 10, 1 + progress * 10, 1);
+                    ef.mesh.material.opacity = 1.0 - progress;
+
+                    enemies.forEach(e => {
+                        if (!e.hitBy || !e.hitBy.includes(ef)) {
+                            const dist = e.mesh.position.distanceTo(ef.mesh.position);
+                            const currentRadius = ef.mesh.scale.x * 0.5;
+                            if (dist < currentRadius && dist > currentRadius - 1) {
+                                e.hp -= ef.damage;
+                                showFloatingText(`-${ef.damage}`, e.mesh.position, '#ff4d4d');
+                                if (!e.hitBy) e.hitBy = [];
+                                e.hitBy.push(ef);
+                                if (e.hp <= 0) {
+                                    gameState.tokens += e.tokenValue;
+                                    playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
+                                    scene.remove(e.mesh);
+                                    enemies = enemies.filter(en => en !== e);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        
+        function showPowerUpSelection() {
+            powerupChoices.innerHTML = '';
+            const availablePicks = { ...POWERS };
+            const choices = [];
+            while (choices.length < 3 && Object.keys(availablePicks).length > 0) {
+                const randomIndex = Math.floor(Math.random() * Object.keys(availablePicks).length);
+                const randomKey = Object.keys(availablePicks)[randomIndex];
+                const currentLevel = gameState.powers[randomKey]?.level || 0;
+                if (currentLevel < availablePicks[randomKey].maxLevel) {
+                    choices.push(randomKey);
+                }
+                delete availablePicks[randomKey];
+            }
+
+            choices.forEach(powerId => {
+                const power = POWERS[powerId];
+                const currentLevel = gameState.powers[powerId]?.level || 0;
+                const card = document.createElement('div');
+                card.className = 'power-card card p-6 rounded-lg cursor-pointer w-64';
+                card.innerHTML = `
+                    <h3 class="text-2xl font-bold text-purple-400">${power.name}</h3>
+                    <p class="text-sm text-gray-300 mt-2">${power.getDescription(currentLevel + 1)}</p>
+                    <p class="mt-4 font-bold text-green-400">NIVEL ${currentLevel + 1}</p>
+                `;
+                card.onclick = () => selectPowerUp(powerId);
+                powerupChoices.appendChild(card);
+            });
+            powerupScreen.classList.remove('hidden');
+        }
+
+        function selectPowerUp(powerId) {
+            if (!gameState.powers) gameState.powers = {};
+            
+            const currentLevel = gameState.powers[powerId]?.level || 0;
+            gameState.powers[powerId] = { level: currentLevel + 1 };
+            
+            const power = POWERS[powerId];
+            if (power.type === 'passive' && power.onAcquire) {
+                power.onAcquire(currentLevel + 1);
+            }
+            
+            updatePowersDisplay();
+            savePlayerData(userPublicKey.toBase58(), gameState);
+            
+            powerupScreen.classList.add('hidden');
+            isPaused = false;
+        }
+
+        function updatePowersDisplay() {
+            powersList.innerHTML = '';
+            for (const powerId in gameState.powers) {
+                const power = POWERS[powerId];
+                const level = gameState.powers[powerId].level;
+                const el = document.createElement('div');
+                el.className = 'text-center';
+                el.innerHTML = `<span class="text-xs font-bold">${power.name.substring(0,4)}</span><br/><span class="text-lg font-black">L${level}</span>`;
+                powersList.appendChild(el);
+            }
         }
 
         function createTextSprite(message, opts) {
@@ -381,10 +600,14 @@
 
         function animate() {
             animationFrameId = requestAnimationFrame(animate);
+            if (isPaused) return;
+
             const delta = clock.getDelta();
             
             updatePlayer(delta);
             updateEnemies(delta);
+            updatePowers(delta);
+            updateProjectilesAndEffects(delta);
 
             const now = performance.now();
             floatingTexts.forEach((text, index) => {
@@ -419,7 +642,7 @@
             }
             
             gameState = {
-                hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0,
+                hp: 100, maxHp: 100, damage: 10, position: { x: 0, z: 0 }, tokens: 0, powers: {},
                 ...playerData
             };
             
@@ -428,11 +651,22 @@
             userPubKeyEl.textContent = userId;
             playerHpEl.textContent = `HP: ${gameState.hp}/${gameState.maxHp}`;
             playerTokensEl.textContent = `TOKENS: ${gameState.tokens}`;
+            updatePowersDisplay();
+            
+            // Aplicar efectos pasivos al cargar
+            for (const powerId in gameState.powers) {
+                const power = POWERS[powerId];
+                if(power.type === 'passive' && power.onAcquire) {
+                    // Solo aplicar el efecto del último nivel
+                    const level = gameState.powers[powerId].level;
+                    power.onAcquire(level);
+                }
+            }
             
             init3D();
             generateMap3D();
             loadPlayerModel(gameState);
-            createEnemies();
+            createEnemiesAndChests();
             animate();
             window.addEventListener('keydown', (e) => keysPressed[e.code] = true);
             window.addEventListener('keyup', (e) => keysPressed[e.code] = false);
@@ -449,3 +683,4 @@
     </script>
 </body>
 </html>
+
